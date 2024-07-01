@@ -1,5 +1,5 @@
 export const FootballFusionContract = {
-    address:'0xA78312A7aFC8255530036E60e518C1a26bC3F052',
+    address:'0x5c2750e0b1DD98daFd0608319A3bD1410159986b',
     abi:[
       {
         "inputs": [
@@ -284,6 +284,11 @@ export const FootballFusionContract = {
             "type": "uint256"
           },
           {
+            "internalType": "uint256",
+            "name": "matchId",
+            "type": "uint256"
+          },
+          {
             "internalType": "string",
             "name": "teamAName",
             "type": "string"
@@ -434,6 +439,19 @@ export const FootballFusionContract = {
       {
         "inputs": [],
         "name": "ticketCost",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "totalmatches",
         "outputs": [
           {
             "internalType": "uint256",
