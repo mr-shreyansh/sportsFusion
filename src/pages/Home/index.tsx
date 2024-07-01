@@ -4,6 +4,7 @@ import WalletConnectPopup from "@/components/customWalletConnectButton/walletCon
 import CustomWalletConnectButton from "@/components/customWalletConnectButton";
 import { FootballFusionContract } from "../../contracts/FootballBettingGame";
 import { ethers } from "ethers";
+import { Contract } from "ethers";
 const Home = () => {
   const account = useAccount();
   const { connectors, connect, status, error } = useConnect();
@@ -18,30 +19,32 @@ const Home = () => {
 
   async function registerMarket() {
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
       const signer = await provider.getSigner();
-      const contract = new ethers.Contract(
+      const contract:any = new ethers.Contract(
         SFConfig.address,
         SFConfig.abi,
         signer
       );
-      const tx = await contract.registerMarket();
+      // const gasEstimate = await contract.estimateGas['registerMarket']();
+      const tx = await contract.registerMarket({gasLimit:3000000});
       await tx.wait();
       console.log(`market Registered`);
     } catch (error) {
-      console.error("Error adding match:", error);
+      console.error("Error registering market:", error);
     }
   }
+
   async function addMatch(matchId: any, teamA: any, teamB: any) {
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(
         SFConfig.address,
         SFConfig.abi,
         signer
       );
-      const tx = await contract.addMatch(matchId, teamA, teamB);
+      const tx = await contract.addMatch(teamA, teamB);
       await tx.wait();
       console.log(
         `Match added: Match ID = ${matchId}, Team A = ${teamA}, Team B = ${teamB}`
@@ -53,7 +56,7 @@ const Home = () => {
 
   async function placeBet(matchId: any, teamId: any, ticketCost: any) {
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(
         SFConfig.address,
@@ -73,7 +76,7 @@ const Home = () => {
 
   async function fetchGameResult(matchId: any, maxLinkCost: any) {
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(
         SFConfig.address,
@@ -93,7 +96,7 @@ const Home = () => {
   }
 
   return (
-    <div>
+    <div className="text-black">
       <button
         onClick={() => {
           connect;
@@ -109,7 +112,6 @@ const Home = () => {
       </button>
 
       <div className="flex flex-col gap-2 p-3 max-w-[500px]">
-        <input onChange={(e)=>{setMatchId(Number(e.target.value))}} placeholder="Match ID" className="bg-white rounded-lg p-2 outline-none"/>
         <input onChange={(e)=>{setTeamA(String(e.target.value))}} placeholder="Team A" className="bg-white rounded-lg p-2 outline-none"/>
         <input onChange={(e)=>{setTeamB(String(e.target.value))}} placeholder="Team B" className="bg-white rounded-lg p-2 outline-none"/>
         <button onClick={()=>{addMatch(matchId,teamA,teamB)}}>Add match</button>

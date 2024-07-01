@@ -3,47 +3,45 @@ pragma solidity ^0.8.13;
 
 import "./external/ISynthetixCore.sol";
 import "../lib/forge-std/src/interfaces/IERC20.sol";
-import '../lib/chainlink/contracts/src/v0.8/vrf/VRFConsumerBaseV2.sol';
-import '../lib/chainlink/contracts/src/v0.8/vrf/VRFV2WrapperConsumerBase.sol';
 
-contract FootballBettingGame is VRFV2WrapperConsumerBase {
+contract SportsBettingGame {
     
     event MarketRegistered(uint128 indexed marketId);
     event BetPlaced(address indexed bettor, uint256 indexed matchId, uint256 indexed teamId, uint256 amount);
-    event MatchAdded(uint256 indexed matchId, uint256 teamA, uint256 teamB);
+    event MatchAdded(uint256 indexed matchId, string teamA, string teamB);
     event GameResult(uint256 indexed matchId, uint256 winningTeamId);
 
     error InsufficientLiquidity(uint256 betAmount, uint256 maxBetAmount);
     error BetAlreadyPlaced(address bettor, uint256 matchId);
+    error NotMatchCreator(address caller);
 
     ISynthetixCore public synthetix;
-    IERC20 public linkToken;
     uint128 public marketId;
 
     uint256 public ticketCost;
     uint256 public feePercent;
-    bool private isDrawing;
 
     struct Match {
         uint256 teamA;
         uint256 teamB;
+        string teamAName;
+        string teamBName;
         bool exists;
+        address creator;
+        bool isDecided;
+        uint256 winningTeamId;
     }
 
-    mapping(uint256 => Match) public matches; // matchId -> Match
+    Match[] public matches;
     mapping(uint256 => mapping(uint256 => address[])) public matchBets; // matchId -> teamId -> bettors
     mapping(address => mapping(uint256 => bool)) public userBets; // user -> matchId -> bet status
-    mapping(uint256 => uint256) private requestIdToMatchId;
 
     constructor(
         ISynthetixCore _synthetix,
-        address link,
-        address vrf, 
-        uint256 _ticketCost, 
+        uint256 _ticketCost,
         uint256 _feePercent
-    ) VRFV2WrapperConsumerBase(link, vrf) {
+    ) {
         synthetix = _synthetix;
-        linkToken = IERC20(link);
         ticketCost = _ticketCost;
         feePercent = _feePercent;
     }
@@ -55,16 +53,19 @@ contract FootballBettingGame is VRFV2WrapperConsumerBase {
         }
     }
 
-    function addMatch(uint256 matchId, uint256 teamA, uint256 teamB) external {
-        require(!matches[matchId].exists, "Match already exists");
-
-        matches[matchId] = Match({
-            teamA: teamA,
-            teamB: teamB,
-            exists: true
-        });
-
-        emit MatchAdded(matchId, teamA, teamB);
+    function addMatch(string memory teamAName, string memory teamBName) external returns (uint256 matchId) {
+        matches.push(Match({
+            teamA: matches.length,
+            teamB: matches.length + 1,
+            teamAName: teamAName,
+            teamBName: teamBName,
+            exists: true,
+            creator: msg.sender,
+            isDecided: false,
+            winningTeamId: 0
+        }));
+        matchId = matches.length - 1;
+        emit MatchAdded(matchId, teamAName, teamBName);
     }
 
     function placeBet(uint256 matchId, uint256 teamId) external {
@@ -90,24 +91,20 @@ contract FootballBettingGame is VRFV2WrapperConsumerBase {
         return synthetix.getWithdrawableMarketUsd(marketId) / ticketCost;
     }
 
-    function fetchGameResult(uint256 matchId, uint256 maxLinkCost) external {
-        require(!isDrawing, "Draw already in progress");
+    function declareWinner(uint256 matchId, uint256 winningTeamId) external {
         require(matches[matchId].exists, "Match does not exist");
+        require(matches[matchId].creator == msg.sender, "Only match creator can declare the winner");
+        require(winningTeamId == matches[matchId].teamA || winningTeamId == matches[matchId].teamB, "Invalid winning team");
+        require(!matches[matchId].isDecided, "Match result already declared");
 
-        linkToken.transferFrom(msg.sender, address(this), maxLinkCost);
+        matches[matchId].isDecided = true;
+        matches[matchId].winningTeamId = winningTeamId;
+        distributePrizes(matchId, winningTeamId);
 
-        uint256 requestId = requestRandomness(
-            500000, // max callback gas
-            0, // min confirmations
-            1 // number of random values
-        );
-
-        requestIdToMatchId[requestId] = matchId;
-
-        isDrawing = true;
+        emit GameResult(matchId, winningTeamId);
     }
 
-    function finishDraw(uint256 matchId, uint256 winningTeamId) internal {
+    function distributePrizes(uint256 matchId, uint256 winningTeamId) internal {
         address[] storage winners = matchBets[matchId][winningTeamId];
 
         IERC20 usdToken = IERC20(synthetix.getUsdToken());
@@ -116,17 +113,6 @@ contract FootballBettingGame is VRFV2WrapperConsumerBase {
         for (uint i = 0; i < winners.length; i++) {
             usdToken.transfer(winners[i], prize);
         }
-
-        emit GameResult(matchId, winningTeamId);
-
-        isDrawing = false;
-    }
-
-    function fulfillRandomWords(uint256 requestId, uint256[] memory randomWords) internal override {
-        uint256 matchId = requestIdToMatchId[requestId];
-        Match memory matchInfo = matches[matchId];
-        uint256 winningTeamId = (randomWords[0] % 2 == 0) ? matchInfo.teamA : matchInfo.teamB;
-        finishDraw(matchId, winningTeamId);
     }
 
     function name(uint128 _marketId) external view returns (string memory n) {
@@ -141,7 +127,7 @@ contract FootballBettingGame is VRFV2WrapperConsumerBase {
 
     function minimumCredit(uint128 _marketId) external view returns (uint256 l) {
         if (_marketId == marketId) {
-            if (isDrawing) {
+            if (matches[_marketId].isDecided) {
                 l = type(uint).max;
             }
         }
